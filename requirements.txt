@@ -1,0 +1,21 @@
+# Python 3.11+ (see .python-version in the shipped training bundle).
+# Flexible install: pip install -r requirements.txt
+# Exact tested stack: pip install -r requirements-lock.txt
+
+torch
+torchvision
+numpy
+pandas
+tifffile
+scikit-image
+scipy
+opencv-python
+tqdm
+Pillow
+h5py
+psutil
+matplotlib
+scikit-learn
+polars
+networkx
+sympy
