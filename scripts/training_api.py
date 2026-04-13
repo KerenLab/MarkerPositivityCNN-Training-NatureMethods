@@ -1,8 +1,9 @@
 """
 Configure and run marker-positivity training (ResNet + segmentation channels).
 
-``path_to_mantis_dirs`` entries are container or project roots; FOV folders are discovered
-(``…/MantisProject…/<FOV>/`` or flat ``…/<FOV>/``). Label CSVs use ``fov``, ``cellID``, ``Marker``, …
+Each ``images_root_folder`` entry is a root where FOV folders are discovered (flat
+``…/<FOV>/`` or nested ``…/<project>/<FOV>/`` with ``segmentation_labels.tiff``). Label CSVs
+use ``fov``, ``cellID``, ``Marker``, …
 """
 from __future__ import annotations
 
@@ -46,23 +47,23 @@ def resolve_under_repo(path: str) -> str:
     return str(_REPO_ROOT / path)
 
 
-def _fov_train_indices_for_mantis_dirs(
-    mantis_dirs: list[str], train_fov_fraction: float
+def _fov_train_indices_for_image_roots(
+    image_roots: list[str], train_fov_fraction: float
 ) -> list[np.ndarray]:
     """First ``floor(fraction * n_fovs)`` FOV indices per project (same rule as ``run_train.py``)."""
     out: list[np.ndarray] = []
-    for mantis_dir in mantis_dirs:
-        fov_dirs = list_fov_dirs_with_segmentation(mantis_dir)
+    for root in image_roots:
+        fov_dirs = list_fov_dirs_with_segmentation(root)
         n_fovs = len(fov_dirs)
         if n_fovs == 0:
-            raise ValueError(f"No FOV directories with segmentation under {mantis_dir!r}")
+            raise ValueError(f"No FOV directories with segmentation under {root!r}")
         n_train = max(1, min(int(train_fov_fraction * n_fovs), n_fovs - 1))
         out.append(np.arange(n_train))
     return out
 
 
 class TrainingConfigDict(TypedDict, total=False):
-    path_to_mantis_dirs: Required[list[str]]
+    images_root_folder: Required[list[str]]
     label_csv_path_list: Required[list[str]]
     path_to_output_dir: Required[str]
     model_name: Required[str]
@@ -79,7 +80,7 @@ class TrainingConfigDict(TypedDict, total=False):
 
 @dataclass(frozen=True, slots=True)
 class TrainingConfig:
-    path_to_mantis_dirs: tuple[str, ...]
+    images_root_folder: tuple[str, ...]
     label_csv_path_list: tuple[str, ...]
     path_to_output_dir: str
     model_name: str
@@ -96,14 +97,14 @@ class TrainingConfig:
     @classmethod
     def from_mapping(cls, m: TrainingConfigDict) -> TrainingConfig:
         try:
-            md = m["path_to_mantis_dirs"]
+            roots = m["images_root_folder"]
             lc = m["label_csv_path_list"]
             od = m["path_to_output_dir"]
             name = m["model_name"]
         except KeyError as e:
             raise KeyError(f"CONFIG missing required key: {e.args[0]!r}") from e
         return cls(
-            path_to_mantis_dirs=tuple(md),
+            images_root_folder=tuple(roots),
             label_csv_path_list=tuple(lc),
             path_to_output_dir=str(od),
             model_name=str(name),
@@ -120,14 +121,14 @@ class TrainingConfig:
 
 
 def run_training(config: TrainingConfig) -> None:
-    mantis_resolved = [resolve_under_sample_data(p) for p in config.path_to_mantis_dirs]
+    roots_resolved = [resolve_under_sample_data(p) for p in config.images_root_folder]
     labels_resolved = [resolve_under_sample_data(p) for p in config.label_csv_path_list]
-    if len(labels_resolved) == 1 and len(mantis_resolved) > 1:
-        labels_resolved = labels_resolved * len(mantis_resolved)
-    elif len(labels_resolved) != len(mantis_resolved):
+    if len(labels_resolved) == 1 and len(roots_resolved) > 1:
+        labels_resolved = labels_resolved * len(roots_resolved)
+    elif len(labels_resolved) != len(roots_resolved):
         raise ValueError(
-            f"Need one label CSV or one per mantis dir; got {len(labels_resolved)} CSV(s) "
-            f"for {len(mantis_resolved)} mantis dir(s)."
+            f"Need one label CSV or one per images root; got {len(labels_resolved)} CSV(s) "
+            f"for {len(roots_resolved)} root(s)."
         )
     out_dir = resolve_under_repo(config.path_to_output_dir)
     os.makedirs(out_dir, exist_ok=True)
@@ -146,16 +147,16 @@ def run_training(config: TrainingConfig) -> None:
         f"pretrained={pretrained or '—'}"
     )
     print(
-        f"  {', '.join(os.path.basename(os.path.normpath(p)) for p in mantis_resolved)} | "
+        f"  {', '.join(os.path.basename(os.path.normpath(p)) for p in roots_resolved)} | "
         f"{', '.join(os.path.basename(p) for p in labels_resolved)}"
     )
 
-    fov_inds = _fov_train_indices_for_mantis_dirs(
-        mantis_resolved, config.train_fov_fraction
+    fov_inds = _fov_train_indices_for_image_roots(
+        roots_resolved, config.train_fov_fraction
     )
 
     train_using_seg(
-        path_to_mantis_dirs=mantis_resolved,
+        images_root_folder=roots_resolved,
         label_csv_path_list=labels_resolved,
         fov_inds_for_training_per_project=fov_inds,
         marker_expression_to_filter=None,

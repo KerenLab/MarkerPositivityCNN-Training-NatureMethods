@@ -11,19 +11,15 @@ import tqdm
 from torch.utils.data import DataLoader, WeightedRandomSampler
 
 from data_tools.channels_data import MarkerType
-from data_tools.datasets import FOVDatasetByLabelDict, create_train_indices, parse_label_csv_files
-from data_tools.dataset_utils import (
-    get_mantis_dir_path_from_proj_name,
-    get_path_to_label_csv,
-    list_fov_dirs_with_segmentation,
-)
+from data_tools.datasets import FOVDatasetByLabelDict, parse_label_csv_files
+from data_tools.dataset_utils import list_fov_dirs_with_segmentation
 from data_tools.torch_models import ResNet18CellWithSegFeatureExtractor
 from evaluation.eval_model import eval_model
 from evaluation.perf_calculator import PerfCalculator
 
 
 def train_using_seg(
-    path_to_mantis_dirs: List[str],
+    images_root_folder: List[str],
     label_csv_path_list: List[str],
     fov_inds_for_training_per_project: List[np.ndarray],
     marker_expression_to_filter: Optional[List[MarkerType]] = None,
@@ -47,8 +43,8 @@ def train_using_seg(
     fov_num_per_project_train = list()
     fov_num_per_project_val = list()
     
-    for i, path_to_mantis_dir in enumerate(path_to_mantis_dirs):
-        fov_dir_path_list = list_fov_dirs_with_segmentation(path_to_mantis_dir)
+    for i, images_root in enumerate(images_root_folder):
+        fov_dir_path_list = list_fov_dirs_with_segmentation(images_root)
         fov_dir_path_list_train.extend(list(np.take(fov_dir_path_list, fov_inds_for_training_per_project[i])))
 
         fov_num_per_project_train.append(len(fov_inds_for_training_per_project[i]))
@@ -73,7 +69,7 @@ def train_using_seg(
     )
 
     train_dataset = FOVDatasetByLabelDict(
-        manits_img_dir_path_list=fov_dir_path_list_train,
+        fov_image_dir_path_list=fov_dir_path_list_train,
         labels_dict=label_dict_train,
         add_augmentations=True,
         cache_images=False,
@@ -103,7 +99,7 @@ def train_using_seg(
     )
 
     val_dataset = FOVDatasetByLabelDict(
-        manits_img_dir_path_list=fov_dir_path_list_val,
+        fov_image_dir_path_list=fov_dir_path_list_val,
         labels_dict=label_dict_val,
         cache_images=False,
         verbose=False,
@@ -241,36 +237,3 @@ def train_using_seg(
 
     elapsed_min = (time.time() - tic) / 60.0
     print(f"\nDone in {elapsed_min:.2f} min.\n")
-
-
-def run_training():
-    ratio_train = 0.75
-    training_project_list = [
-        'PDAC_Aug1423', 'NSCLC_Sep1923', 'GVHD_Feb1323', 'Melanoma_Sept1022',
-    ]
-
-    path_to_manits_dir_list = list()
-    path_to_label_csv_list = list()
-    for project_name in training_project_list:
-        path_to_manits_dir_list.append(get_mantis_dir_path_from_proj_name(project_name))
-        path_to_label_csv_list.append(get_path_to_label_csv(project_name, get_with_filters=True))
-
-    train_indices_dict = create_train_indices(x=ratio_train)
-    training_inds_fovs_per_project = [
-        train_indices_dict[project_nm] for project_nm in training_project_list
-    ]
-
-    out_nm = 'Resnet18_seg_gmpn_by_patient'
-    train_using_seg(
-        path_to_manits_dir_list,
-        path_to_label_csv_list,
-        training_inds_fovs_per_project,
-        marker_expression_to_filter=None,
-        model_w_path_to_load=None,
-        out_nm=out_nm,
-    )
-
-
-
-if __name__ == '__main__':
-    run_training()

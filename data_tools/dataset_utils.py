@@ -166,23 +166,6 @@ class CellIdentifierManager:
         return list(set(fov_name_list))
     
 
-def get_mantis_dir_path_from_proj_name(proj_name: str) -> str:
-    """
-    Generate the Mantis directory path from the project name.
-
-    Args:
-        proj_name (str): The name of the project.
-
-    Returns:
-        str: The path to the Mantis project directory.
-    """
-    if 'nimbus' in proj_name or 'decidua' in proj_name:
-        path_to_project_dir = os.path.join(get_wexac_base_path(), 'leeatgen','Nimbus_Data', 'Pan-Multiplex','mibi_decidua', 'image_data')
-    else:
-        path_to_project_dir = os.path.join(get_wexac_base_path(), 'Collaboration', 'CellTune', 'Projects', proj_name,  'MantisProject' + proj_name)
-    return path_to_project_dir
-
-
 def get_path_to_label_csv(proj_name:str, get_with_filters:bool=False) -> str:
     """Generate path the marker positivity label csv file from project name.
 
@@ -291,25 +274,19 @@ def _fov_dir_has_segmentation_labels(fov_dir: str) -> bool:
     return False
 
 
-def list_fov_dirs_with_segmentation(path_to_mantis_root: str) -> List[str]:
+def list_fov_dirs_with_segmentation(images_root: str) -> List[str]:
     """
-    Return sorted absolute paths to per-FOV directories under ``path_to_mantis_root``.
+    Return sorted absolute paths to per-FOV directories under ``images_root``.
 
-    Supports the same layouts as the rest of this codebase:
-
-    - **Flat:** ``<root>/<FOV>/segmentation_labels.tiff`` — each immediate subdirectory is a FOV.
-    - **Container + Mantis project:** ``<container>/<MantisProject…>/<FOV>/segmentation_labels.tiff``
-      — immediate children without a seg file are scanned one level deeper.
-
-    So ``path_to_mantis_root`` may be a **container** (e.g. ``Melanoma_Sept1022``), a **project**
-    folder (e.g. ``…/MantisProjectMelanoma_Sept1022``), or any directory whose FOVs live one or
-    two levels below as above.
+    - **Flat:** ``<images_root>/<FOV>/segmentation_labels.tiff`` (or ``.tif``).
+    - **Nested:** if an immediate subdirectory has no segmentation file, subfolders one level
+      deeper are treated as FOVs (e.g. ``<images_root>/<project>/<FOV>/``).
 
     Raises:
-        FileNotFoundError: if ``path_to_mantis_root`` is missing.
-        ValueError: if no FOV directory containing ``segmentation_labels.tiff`` is found.
+        FileNotFoundError: if ``images_root`` is missing.
+        ValueError: if no FOV directory with ``segmentation_labels.tiff`` / ``.tif`` is found.
     """
-    root = os.path.abspath(os.path.normpath(path_to_mantis_root))
+    root = os.path.abspath(os.path.normpath(images_root))
     if not os.path.isdir(root):
         raise FileNotFoundError(f"Not a directory: {root!r}")
 
@@ -328,7 +305,7 @@ def list_fov_dirs_with_segmentation(path_to_mantis_root: str) -> List[str]:
         if _fov_dir_has_segmentation_labels(p):
             fovs.append(p)
             continue
-        # e.g. MantisProject… — FOVs are usually one level down
+        # Intermediate project folder — FOVs are usually one level down
         try:
             level2 = sorted(
                 d
@@ -346,40 +323,23 @@ def list_fov_dirs_with_segmentation(path_to_mantis_root: str) -> List[str]:
         raise ValueError(
             f"No per-FOV folders with segmentation_labels.tiff under {root!r}. "
             "Expected either …/<FOV>/segmentation_labels.tiff or "
-            "…/<MantisProject…>/<FOV>/segmentation_labels.tiff "
-            "(see sample_data layout in the inference bundle README)."
+            "…/<intermediate>/<FOV>/segmentation_labels.tiff "
+            "(see sample_data layout in the README)."
         )
     return sorted(fovs)
 
 
-def get_segmentation_image_of_fov(mantis_dir, fov_name, dataset, cell_id):
-    fov_path = os.path.join(mantis_dir, fov_name)
-    img_path = os.path.join(mantis_dir, fov_name, 'segmentation_borders.tiff')
-    seg_border_image = cv2.imread(img_path, cv2.IMREAD_UNCHANGED)
-
-    fov_name_ext = fov_path.split(os.sep)[-3] + '_' + os.path.basename(fov_path)
-
-    fov_img_ind = dataset.get_fov_ind_from_fov_name(fov_name_ext)
-    cell_idx_in_channel = np.where(dataset.cell_props_by_fov[fov_img_ind]['label'] == cell_id)[0]
-    seg_border_image_cropped = get_cropped_cell_from_props(seg_border_image, dataset.cell_props_by_fov[fov_img_ind], cell_idx_in_channel, crop_size=128)
-    seg_border_image_cropped[seg_border_image_cropped==0] = np.nan
-    seg_border_image_cropped[seg_border_image_cropped==np.nan] = np.nanmin(seg_border_image_cropped)
-    seg_border_image_cropped = seg_border_image_cropped-np.nanmin(seg_border_image_cropped)
-    seg_border_image_cropped = seg_border_image_cropped/np.max(seg_border_image_cropped)
-    seg_border_image_cropped= (seg_border_image_cropped*255).astype(int)
-    return seg_border_image_cropped
-
-def get_segmentation_image(fov_manits_dir_path, get_borders_image=False, seg_image_in_same_dir=True):
+def get_segmentation_image(fov_image_dir_path, get_borders_image=False, seg_image_in_same_dir=True):
     if not get_borders_image:
         file_to_get = 'segmentation_labels.tiff'
     else:
         file_to_get = 'segmentation_borders.tiff'
 
     if seg_image_in_same_dir:
-        seg_label_image_path = os.path.join(fov_manits_dir_path, file_to_get)
+        seg_label_image_path = os.path.join(fov_image_dir_path, file_to_get)
     else:
-        fov_name = os.path.basename(fov_manits_dir_path)
-        seg_label_image_path = os.path.join(os.path.dirname(fov_manits_dir_path).replace('image_data', 'segmentation_data'),  fov_name+'_'+ file_to_get)
+        fov_name = os.path.basename(fov_image_dir_path)
+        seg_label_image_path = os.path.join(os.path.dirname(fov_image_dir_path).replace('image_data', 'segmentation_data'),  fov_name+'_'+ file_to_get)
 
     # seg_label_image = Image.open(seg_label_image_path)
     # seg_label_image = np.array(seg_label_image.convert("I"))
@@ -392,15 +352,15 @@ def get_segmentation_image(fov_manits_dir_path, get_borders_image=False, seg_ima
     return seg_label_image.astype(int)
 
 
-def get_stacked_image_from_tiff(fov_manits_dir_path, channel_list:List[str], seg_image_in_same_dir):
-    seg_label_image = get_segmentation_image(fov_manits_dir_path, seg_image_in_same_dir=seg_image_in_same_dir)
+def get_stacked_image_from_tiff(fov_image_dir_path, channel_list:List[str], seg_image_in_same_dir):
+    seg_label_image = get_segmentation_image(fov_image_dir_path, seg_image_in_same_dir=seg_image_in_same_dir)
 
     stacked_img = np.zeros((seg_label_image.shape[0], seg_label_image.shape[1], len(channel_list)), dtype=np.uint8)
     for i, ch_name in enumerate(channel_list):
         try:
-            image_path = glob.glob(os.path.join(fov_manits_dir_path, ch_name + '.tif*'))[0]
+            image_path = glob.glob(os.path.join(fov_image_dir_path, ch_name + '.tif*'))[0]
         except IndexError as e:
-            print(f'Warning: Could not find image for fov {os.path.basename(fov_manits_dir_path)} channel {ch_name}')
+            print(f'Warning: Could not find image for fov {os.path.basename(fov_image_dir_path)} channel {ch_name}')
             continue
 
         # image = Image.open(image_path)
@@ -410,8 +370,8 @@ def get_stacked_image_from_tiff(fov_manits_dir_path, channel_list:List[str], seg
 
     return stacked_img
 
-def get_cell_props_from_fov(fov_manits_dir_path):
-    seg_label_image = get_segmentation_image(fov_manits_dir_path)
+def get_cell_props_from_fov(fov_image_dir_path):
+    seg_label_image = get_segmentation_image(fov_image_dir_path)
 
     props = regionprops_table(seg_label_image,
                             properties=['label', 'area', 'bbox','orientation', 

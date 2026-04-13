@@ -1,11 +1,9 @@
 import glob
 import os
-from pprint import pprint
 from typing import List, Union
 
 import pandas as pd
 
-from data_tools.dataset_utils import get_mantis_dir_path_from_proj_name, get_wexac_base_path
 from enum import IntEnum
 
 class MarkerType(IntEnum):
@@ -99,14 +97,6 @@ channel_list_mbm = ['BCAT',
 channel_list_pdac = ['Amylase', 'Calprotectin', 'cCasp3', 'CD14', 'CD15', 'CD20', 'CD3', 'CD31', 'CD4', 'CD45', 'CD8', 'COL1A1', 'CXCL5', 'dsDNA', 'ECAD', 'FAP', 'FASN', 'FOXP3', 'GATA6', 'gH2AX', 'GLUT1', 'HIF1a', 'HLA1', 'HLADRDPDQ', 'IDO1', 'IL6', 'Keratin', 'Ki67', 'KRT5', 'LDHA', 'MCT1', 'MMP7', 'NaKATPase', 'P53', 'PD1', 'PDL1', 'pNRF2', 'SMA', 'SYP', 'VIM']
 
 
-def get_channel_list_from_project_mantis_dir(path_to_project_dir, get_only_tif_files:bool):
-    if os.sep not in path_to_project_dir:
-        path_to_project_dir = get_mantis_dir_path_from_proj_name(path_to_project_dir)
-
-    fov_dir_path_list =  [os.path.join(path_to_project_dir, d) for d in os.listdir(path_to_project_dir) if os.path.isdir(os.path.join(path_to_project_dir, d))]
-    return get_channel_list(fov_dir_path_list[1], get_only_tif_files)
-
-
 def get_channel_list(example_tif_dir, get_only_tif_files):
     if get_only_tif_files:
         tif_images = glob.glob(os.path.join(example_tif_dir, '*.tif'))
@@ -154,7 +144,6 @@ def get_marker_type_encoding(marker_input: Union[str, List[str], pd.Series], out
 
 
 if __name__ == '__main__':
-    # path_to_img_dir = r'Y:\Collaboration\CellTune\Projects\Melanoma_Sept1022\MantisProjectMelanoma_Sept1022\Slide05_Point014'
     # tif_images = glob.glob(os.path.join(path_to_img_dir, '*.tif'))
     # # print(tif_images)
     # marker_names = [os.path.basename(image).split('.')[0] for image in tif_images]

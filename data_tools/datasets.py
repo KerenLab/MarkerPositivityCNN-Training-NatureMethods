@@ -338,8 +338,8 @@ class FOVDataset(Dataset):
     Args:
         Dataset (_type_): _description_
     """
-    def __init__(self, manits_img_dir_path_list, seg_as_channels:bool=True, get_metadata:bool=True, add_augmentations:bool=False, cache_images:bool=False, channel_list=[], only_labels:bool=False, seg_image_is_in_same_dir_as_other_images:bool = True, verbose: bool = True):
-        self.manits_img_dir_path_list = manits_img_dir_path_list
+    def __init__(self, fov_image_dir_path_list, seg_as_channels:bool=True, get_metadata:bool=True, add_augmentations:bool=False, cache_images:bool=False, channel_list=[], only_labels:bool=False, seg_image_is_in_same_dir_as_other_images:bool = True, verbose: bool = True):
+        self.fov_image_dir_path_list = fov_image_dir_path_list
         self.get_metadata = get_metadata
         self.seg_as_channels = seg_as_channels
         self.b_cache_images=cache_images
@@ -384,7 +384,7 @@ class FOVDataset(Dataset):
             channel_ind = channel
         key = str(fov_img_ind) + '_' + str(channel_ind)
         if key not in self.cached_images.keys():
-            fov_image = get_stacked_image_from_tiff(self.manits_img_dir_path_list[fov_img_ind], [channel], self.seg_image_in_same_dir)
+            fov_image = get_stacked_image_from_tiff(self.fov_image_dir_path_list[fov_img_ind], [channel], self.seg_image_in_same_dir)
             if pad_image:
                 fov_image = pad_fov_image(fov_image, self.cell_props_list[fov_img_ind]) 
 
@@ -405,10 +405,10 @@ class FOVDataset(Dataset):
             ]
         if self.verbose:
             print('Loading segmentation images. ')
-        self.seg_images_cache = [None] * len(self.manits_img_dir_path_list)  # Preallocate list to maintain order
+        self.seg_images_cache = [None] * len(self.fov_image_dir_path_list)  # Preallocate list to maintain order
 
         with ThreadPoolExecutor(max_workers=16) as executor:
-            futures = {executor.submit(get_segmentation_image, path, seg_image_in_same_dir=self.seg_image_in_same_dir): idx for idx, path in enumerate(self.manits_img_dir_path_list)}
+            futures = {executor.submit(get_segmentation_image, path, seg_image_in_same_dir=self.seg_image_in_same_dir): idx for idx, path in enumerate(self.fov_image_dir_path_list)}
         
         for future in as_completed(futures):
             idx = futures[future]  # Retrieve index of the completed future
@@ -418,10 +418,10 @@ class FOVDataset(Dataset):
             print('Calculating cell props...')
         self.cum_cell_counts = list()
 
-        self.cell_props_list = [None] * len(self.manits_img_dir_path_list)  # Preallocate list to maintain order
+        self.cell_props_list = [None] * len(self.fov_image_dir_path_list)  # Preallocate list to maintain order
 
         with ThreadPoolExecutor(max_workers=16) as executor:
-            futures = {executor.submit(regionprops_table, self.seg_images_cache[idx], properties= properties, cache=True): idx for idx, path in enumerate(self.manits_img_dir_path_list)}
+            futures = {executor.submit(regionprops_table, self.seg_images_cache[idx], properties= properties, cache=True): idx for idx, path in enumerate(self.fov_image_dir_path_list)}
         
         for future in as_completed(futures):
             idx = futures[future]  # Retrieve index of the completed future
@@ -429,10 +429,10 @@ class FOVDataset(Dataset):
 
 
 
-        for i, manits_img_dir_path in tqdm.tqdm(
-            enumerate(self.manits_img_dir_path_list),
+        for i, fov_image_dir_path in tqdm.tqdm(
+            enumerate(self.fov_image_dir_path_list),
             desc='FOVs in dataset',
-            total=len(self.manits_img_dir_path_list),
+            total=len(self.fov_image_dir_path_list),
             disable=not self.verbose,
         ):
             self.cell_props_by_fov[i] = self.cell_props_list[i]
@@ -456,7 +456,7 @@ class FOVDataset(Dataset):
             im = self.get_fov_image_from_cache(fov_img_ind, channel=channel_name, pad_image=False)
             cropped_cell = get_cropped_cell_from_props(im, self.cell_props_by_fov[fov_img_ind], cell_idx_in_channel, crop_size, augment_angle=angle)
         else:
-            image_path = glob.glob(os.path.join(self.manits_img_dir_path_list[fov_img_ind], channel_name + '.tif*'))[0]
+            image_path = glob.glob(os.path.join(self.fov_image_dir_path_list[fov_img_ind], channel_name + '.tif*'))[0]
             im = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
             cropped_cell = get_cropped_cell_from_props(im, self.cell_props_by_fov[fov_img_ind], cell_idx_in_channel, crop_size, augment_angle=angle)
 
@@ -464,7 +464,7 @@ class FOVDataset(Dataset):
         if self.b_cache_images:
             seg_image = self.seg_images_cache[fov_img_ind]
         else:
-            seg_image = get_segmentation_image(self.manits_img_dir_path_list[fov_img_ind])
+            seg_image = get_segmentation_image(self.fov_image_dir_path_list[fov_img_ind])
 
         cropped_seg = get_cropped_cell_from_props(seg_image, self.cell_props_by_fov[fov_img_ind], cell_idx_in_channel, crop_size, augment_angle=angle, is_seg_img=True)
 
@@ -486,7 +486,7 @@ class FOVDataset(Dataset):
         if self.b_cache_images:
             im = self.get_fov_image_from_cache(fov_img_ind, channel=channel_name, pad_image=True)
         else:
-            image_path = glob.glob(os.path.join(self.manits_img_dir_path_list[fov_img_ind], channel_name + '.tif*'))[0]
+            image_path = glob.glob(os.path.join(self.fov_image_dir_path_list[fov_img_ind], channel_name + '.tif*'))[0]
             im = cv2.imread(image_path, cv2.IMREAD_UNCHANGED)
             im = pad_fov_image(im, self.cell_props_by_fov[fov_img_ind]) 
         im = im[..., np.newaxis]
@@ -496,7 +496,7 @@ class FOVDataset(Dataset):
         return cropped_cell
 
     def get_fov_ind_from_fov_name(self, fov_name):
-        fov_names_ext = [fov_path.split(os.sep)[-3] + '_' + os.path.basename(fov_path) for fov_path in self.manits_img_dir_path_list]
+        fov_names_ext = [fov_path.split(os.sep)[-3] + '_' + os.path.basename(fov_path) for fov_path in self.fov_image_dir_path_list]
         return fov_names_ext.index(fov_name)
 
 
@@ -530,74 +530,6 @@ class FOVDataset(Dataset):
     def __getitem__(self, idx):
         return
 
-class FOVDatasetByMantisFolder(FOVDataset):
-    """ A class for cell intensity image dataset, based on full field of view image directories.
-    The class handles the creation of proper cell crops from multiple channels, dataset enumeration and labels.
-    This class uses all of the cells in a given fov directory ("mantis directory"), regardless of the existence of a marker positivity label. 
-    Useful for general prediction purposes.
-    """
-
-    def __init__(self, manits_img_dir_path_list, channel_list, labels_dict, seg_as_channels:bool=True, get_metadata=True, add_augmentations:bool=False, cache_images:bool=True, seg_image_is_in_same_dir_as_other_images:bool = True):
-        """
-        Args:
-            image_paths (list of str): List of file paths for the full FOV images.
-            labels (list of int): List of labels for the images.
-            transform (callable, optional): Optional transform to be applied on a sample.
-        """
-        super(FOVDatasetByMantisFolder, self).__init__(manits_img_dir_path_list, seg_as_channels, get_metadata, add_augmentations, cache_images, channel_list, seg_image_is_in_same_dir_as_other_images=seg_image_is_in_same_dir_as_other_images)
-
-        self.channel_list = channel_list
-        self.labels_dict=labels_dict
-
-    def __len__(self):
-        return self.cum_cell_counts[-1]
-    
-
-
-    def __getitem__(self, idx):
-        fov_img_ind = np.where(np.array(self.cum_cell_counts) > idx)[0][0]
-
-        cell_props = self.cell_props_list[fov_img_ind]
-        num_cells_in_fov = len(cell_props['label'])
-
-
-        if fov_img_ind != 0:
-            idx_in_fov = idx - self.cum_cell_counts[fov_img_ind-1]
-        else:
-            idx_in_fov = idx
-        channel_ind = idx_in_fov // num_cells_in_fov
-        cell_idx_in_channel = idx_in_fov % num_cells_in_fov
-
-
-        fov_path = self.manits_img_dir_path_list[fov_img_ind]
-        fov_name_ext = fov_path.split(os.sep)[-3] + '_' + os.path.basename(fov_path)
-        channel_name = self.channel_list[channel_ind]
-        cell_id =cell_props['label'][cell_idx_in_channel]
-        try:
-            label = self.labels_dict[fov_name_ext][channel_name][cell_id]['label']
-        except Exception as e:
-            label=-1
-
-        if self.seg_as_channels:
-            cell_crop = self.get_cropped_cell_image_with_seg(fov_name_ext, channel_name, cell_id)
-        else:
-            fov_image = self.get_fov_image_from_cache(fov_img_ind, channel_name)
-            cell_crop = get_single_cell_crop(fov_image, self.cell_props_list[fov_img_ind], cell_idx=cell_idx_in_channel)
-
-        cell_crop = self.out_transform(cell_crop)
-
-
-        if self.get_metadata:
-            channel_name = self.channel_list[channel_ind]
-            cell_id = cell_props['label'][cell_idx_in_channel]
-            # fov_name = os.path.basename(self.manits_img_dir_path_list[fov_img_ind])
-            cell_data = fov_name_ext, channel_name, cell_id, get_marker_type_encoding(channel_name)
-            return cell_crop, label, cell_data#, str(fov_img_ind) + '_' + str(channel_ind)
-        else:
-            return cell_crop, label
-
-
-
 class FOVDatasetByLabelDict(FOVDataset):
     """ A class for cell intensity image dataset, based on full field of view image directories.
     The class handles the creation of proper cell crops from multiple channels, dataset enumeration and labels.
@@ -606,7 +538,7 @@ class FOVDatasetByLabelDict(FOVDataset):
     """
 
     def __init__(self,
-                  manits_img_dir_path_list: List[str],
+                  fov_image_dir_path_list: List[str],
                     labels_dict: Dict[str, Dict[str, Dict[str, Dict[str, int]]]],
                     get_metadata:bool=True,
                     add_augmentations:bool=False,
@@ -614,7 +546,7 @@ class FOVDatasetByLabelDict(FOVDataset):
                     cache_images:bool=False,
                     only_labels: bool=False,
                     verbose: bool = True):
-        super(FOVDatasetByLabelDict, self).__init__(manits_img_dir_path_list=manits_img_dir_path_list,
+        super(FOVDatasetByLabelDict, self).__init__(fov_image_dir_path_list=fov_image_dir_path_list,
                                                      seg_as_channels=seg_as_channels,
                                                        get_metadata=get_metadata,
                                                          add_augmentations=add_augmentations,
