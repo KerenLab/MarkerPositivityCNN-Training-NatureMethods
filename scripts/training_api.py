@@ -1,9 +1,8 @@
 """
 Configure and run marker-positivity training (ResNet + segmentation channels).
 
-Each ``images_root_folder`` entry is a root where FOV folders are discovered (flat
-``…/<FOV>/`` or nested ``…/<project>/<FOV>/`` with ``segmentation_labels.tiff``). Label CSVs
-use ``fov``, ``cellID``, ``Marker``, …
+Data input is provided via a training data sources CSV with columns:
+``proj_nm``, ``training_labels_path``, ``images_dir``.
 """
 from __future__ import annotations
 
@@ -22,6 +21,7 @@ if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
 from data_tools.dataset_utils import list_fov_dirs_with_segmentation
+from scripts.data_validator import validate_training_data_sources
 from training.train_model import train_using_seg
 
 DEFAULT_TRAIN_FOV_FRACTION: Final[float] = 0.9
@@ -63,8 +63,7 @@ def _fov_train_indices_for_image_roots(
 
 
 class TrainingConfigDict(TypedDict, total=False):
-    images_root_folder: Required[list[str]]
-    label_csv_path_list: Required[list[str]]
+    training_data_sources_csv: Required[str]
     path_to_output_dir: Required[str]
     model_name: Required[str]
     train_fov_fraction: NotRequired[float]
@@ -80,8 +79,7 @@ class TrainingConfigDict(TypedDict, total=False):
 
 @dataclass(frozen=True, slots=True)
 class TrainingConfig:
-    images_root_folder: tuple[str, ...]
-    label_csv_path_list: tuple[str, ...]
+    training_data_sources_csv: str
     path_to_output_dir: str
     model_name: str
     train_fov_fraction: float = DEFAULT_TRAIN_FOV_FRACTION
@@ -97,15 +95,13 @@ class TrainingConfig:
     @classmethod
     def from_mapping(cls, m: TrainingConfigDict) -> TrainingConfig:
         try:
-            roots = m["images_root_folder"]
-            lc = m["label_csv_path_list"]
+            training_data_sources_csv = m["training_data_sources_csv"]
             od = m["path_to_output_dir"]
             name = m["model_name"]
         except KeyError as e:
             raise KeyError(f"CONFIG missing required key: {e.args[0]!r}") from e
         return cls(
-            images_root_folder=tuple(roots),
-            label_csv_path_list=tuple(lc),
+            training_data_sources_csv=str(training_data_sources_csv),
             path_to_output_dir=str(od),
             model_name=str(name),
             train_fov_fraction=float(m.get("train_fov_fraction", DEFAULT_TRAIN_FOV_FRACTION)),
@@ -121,15 +117,7 @@ class TrainingConfig:
 
 
 def run_training(config: TrainingConfig) -> None:
-    roots_resolved = [resolve_under_sample_data(p) for p in config.images_root_folder]
-    labels_resolved = [resolve_under_sample_data(p) for p in config.label_csv_path_list]
-    if len(labels_resolved) == 1 and len(roots_resolved) > 1:
-        labels_resolved = labels_resolved * len(roots_resolved)
-    elif len(labels_resolved) != len(roots_resolved):
-        raise ValueError(
-            f"Need one label CSV or one per images root; got {len(labels_resolved)} CSV(s) "
-            f"for {len(roots_resolved)} root(s)."
-        )
+    data_sources_resolved = resolve_under_repo(config.training_data_sources_csv)
     out_dir = resolve_under_repo(config.path_to_output_dir)
     os.makedirs(out_dir, exist_ok=True)
 
@@ -146,9 +134,18 @@ def run_training(config: TrainingConfig) -> None:
         f"γ={config.scheduler_gamma} fov={config.train_fov_fraction} "
         f"pretrained={pretrained or '—'}"
     )
+    print(f"  training_data_sources_csv={data_sources_resolved}")
+
+    validation = validate_training_data_sources(data_sources_resolved)
+    roots_resolved = validation.images_dir_list
+    labels_resolved = validation.training_labels_path_list
+    validation_summary = validation.summary
     print(
-        f"  {', '.join(os.path.basename(os.path.normpath(p)) for p in roots_resolved)} | "
-        f"{', '.join(os.path.basename(p) for p in labels_resolved)}"
+        "Data validation passed "
+        f"(training_data_sources_csvs={validation_summary.training_data_sources_csvs_checked}, "
+        f"csvs={validation_summary.csv_files_checked}, "
+        f"images_dirs={validation_summary.images_dirs_checked}, "
+        f"fovs={validation_summary.fov_count}, rows={validation_summary.rows_checked})."
     )
 
     fov_inds = _fov_train_indices_for_image_roots(
@@ -180,6 +177,5 @@ __all__ = [
     "TrainingConfig",
     "TrainingConfigDict",
     "resolve_under_repo",
-    "resolve_under_sample_data",
     "run_training",
 ]

@@ -64,6 +64,7 @@ def train_using_seg(
     label_dict_train, weight_list_train, n_samples_train = parse_label_csv_files(
         label_csv_path_list,
         fov_dir_path_list_train,
+        images_dir_for_label_csv_path_list=images_root_folder,
         channel_list_to_filter=marker_expression_to_filter,
         verbose=False,
     )
@@ -94,6 +95,7 @@ def train_using_seg(
     label_dict_val, weight_list_val, n_samples_val = parse_label_csv_files(
         label_csv_path_list,
         fov_dir_path_list_val,
+        images_dir_for_label_csv_path_list=images_root_folder,
         channel_list_to_filter=marker_expression_to_filter,
         verbose=False,
     )

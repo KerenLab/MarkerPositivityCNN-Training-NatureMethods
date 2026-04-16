@@ -239,6 +239,7 @@ def get_dataset_weights(
 
 def parse_label_csv_files(label_csv_path_list: List[str],
                            fov_dir_to_filter: List[np.ndarray],
+                             images_dir_for_label_csv_path_list: List[str] = None,
                              channel_list_to_filter: Union[List[str], List[MarkerType]]=None,
                               keep_only_manual: bool = False,
                                 get_only_baseline_validation_samples:bool=False,
@@ -255,14 +256,21 @@ def parse_label_csv_files(label_csv_path_list: List[str],
     total_negative = 0
     total_negative_and_trained_on = 0
     total_negative_and_not_trained_on = 0
-    if fov_dir_to_filter is not None:
-        fov_names_to_keep =[os.path.basename(fov_dir_to_filter[i]) for i in range(len(fov_dir_to_filter))]
     for i, label_csv_path in enumerate(label_csv_path_list):
-
-        proj_name = os.path.basename(label_csv_path).split('_')
-        proj_name = proj_name[0] + '_' + proj_name[1]
         df = pd.read_csv(label_csv_path)
         all_fov_names += list(df['fov'].unique())
+        fov_name_to_path = None
+        if fov_dir_to_filter is not None:
+            if images_dir_for_label_csv_path_list is not None:
+                img_root = os.path.abspath(os.path.normpath(images_dir_for_label_csv_path_list[i]))
+                fov_dirs_curr = [
+                    p for p in fov_dir_to_filter
+                    if os.path.abspath(os.path.normpath(os.path.dirname(p))) == img_root
+                ]
+            else:
+                fov_dirs_curr = list(fov_dir_to_filter)
+            fov_name_to_path = {os.path.basename(p): p for p in fov_dirs_curr}
+            fov_names_to_keep = list(fov_name_to_path.keys())
 
         if fov_dir_to_filter is not None:
             if verbose:
@@ -313,7 +321,11 @@ def parse_label_csv_files(label_csv_path_list: List[str],
             total=len(fovs),
             disable=not verbose,
         ):
-            fov_ext = proj_name + '_' + fov
+            fov_ext = str(fov)
+            if fov_name_to_path is not None:
+                if fov_ext not in fov_name_to_path:
+                    continue
+                fov_ext = fov_name_to_path[fov_ext]
             if fov_ext not in label_dict:
                 label_dict[fov_ext] = {}
 
@@ -496,7 +508,7 @@ class FOVDataset(Dataset):
         return cropped_cell
 
     def get_fov_ind_from_fov_name(self, fov_name):
-        fov_names_ext = [fov_path.split(os.sep)[-3] + '_' + os.path.basename(fov_path) for fov_path in self.fov_image_dir_path_list]
+        fov_names_ext = list(self.fov_image_dir_path_list)
         return fov_names_ext.index(fov_name)
 
 
